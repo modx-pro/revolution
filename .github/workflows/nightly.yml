@@ -78,19 +78,9 @@ jobs:
 
           cp build.config.sample.php build.config.php
           cp build.properties.sample.php build.properties.php
-
-          python3 -c 'from pathlib import Path; Path("build.distrib.config.php").write_text("""<?php
-/*
- * CI distribution build config (generated in Actions; not committed).
- */
-define('"'"'MODX_CORE_PATH'"'"', dirname(__FILE__) . '"'"'/image/'"'"' . $buildImage . '"'"'/core/'"'"');
-define('"'"'MODX_CONFIG_KEY'"'"', '"'"'config'"'"');
-
-define('"'"'XPDO_DSN'"'"', '"'"'mysql:host=127.0.0.1;dbname=revo_test;charset=utf8'"'"');
-define('"'"'XPDO_DB_USER'"'"', '"'"'root'"'"');
-define('"'"'XPDO_DB_PASS'"'"', '"'"''"'"');
-define('"'"'XPDO_TABLE_PREFIX'"'"', '"'"'modx_'"'"');
-""")'
+          cp build.distrib.config.sample.php build.distrib.config.php
+          sed -i 's/host=localhost/host=127.0.0.1/' build.distrib.config.php
+          sed -i "s/define('XPDO_DB_USER', '');/define('XPDO_DB_USER', 'root');/" build.distrib.config.php
 
       - name: Wait for MySQL
         run: |
