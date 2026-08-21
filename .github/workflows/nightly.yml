@@ -1,0 +1,166 @@
+name: Nightly build
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    name: Build traditional ZIP and publish nightly release
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: revo_test
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+        ports:
+          - 3306:3306
+
+    steps:
+      - name: Checkout 3.x
+        uses: actions/checkout@v4
+        with:
+          ref: 3.x
+          fetch-depth: 0
+
+      - name: Install PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_mysql, zip, mysqli, gd
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install project dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Install Phing
+        run: |
+          composer global require phing/phing --no-interaction --quiet
+          echo "$HOME/.config/composer/vendor/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.composer/vendor/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare build configs
+        working-directory: _build
+        run: |
+          printf '%s\n' \
+            'custom = true' \
+            'debug = on' \
+            'php.command = php' \
+            'git.command = git' \
+            'composer.command = composer' \
+            'build.distrib = true' \
+            'build.timestamp = true' \
+            'build.src.tree = HEAD' \
+            > build.properties
+
+          cp build.config.sample.php build.config.php
+          cp build.properties.sample.php build.properties.php
+
+          python3 -c 'from pathlib import Path; Path("build.distrib.config.php").write_text("""<?php
+/*
+ * CI distribution build config (generated in Actions; not committed).
+ */
+define('"'"'MODX_CORE_PATH'"'"', dirname(__FILE__) . '"'"'/image/'"'"' . $buildImage . '"'"'/core/'"'"');
+define('"'"'MODX_CONFIG_KEY'"'"', '"'"'config'"'"');
+
+define('"'"'XPDO_DSN'"'"', '"'"'mysql:host=127.0.0.1;dbname=revo_test;charset=utf8'"'"');
+define('"'"'XPDO_DB_USER'"'"', '"'"'root'"'"');
+define('"'"'XPDO_DB_PASS'"'"', '"'"''"'"');
+define('"'"'XPDO_TABLE_PREFIX'"'"', '"'"'modx_'"'"');
+""")'
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h127.0.0.1 -uroot --silent; then
+              echo "MySQL is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready" >&2
+          exit 1
+
+      - name: Run Phing nightly
+        working-directory: _build
+        run: phing -f build.xml nightly
+
+      - name: Locate distribution ZIP
+        id: zip
+        working-directory: _build
+        run: |
+          shopt -s nullglob
+          zips=(distrib/modx-*.zip)
+          if [[ ${#zips[@]} -eq 0 ]]; then
+            echo "No ZIP found in _build/distrib" >&2
+            ls -la distrib || true
+            exit 1
+          fi
+          pick=""
+          for z in "${zips[@]}"; do
+            if [[ "$z" != *-sdk.zip ]]; then
+              pick="$z"
+            fi
+          done
+          if [[ -z "$pick" ]]; then
+            pick="${zips[0]}"
+          fi
+          echo "zip_path=_build/${pick}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$pick")" >> "$GITHUB_OUTPUT"
+          ls -lh "$pick"
+
+      - name: Smoke-check ZIP contents
+        run: |
+          unzip -l "${{ steps.zip.outputs.zip_path }}" | head -80
+          unzip -l "${{ steps.zip.outputs.zip_path }}" | grep -E 'setup/|core\.transport\.zip|core/packages/' | head -40
+
+      - name: Publish rolling nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+        run: |
+          set -euo pipefail
+          DATE_UTC=$(date -u +%Y-%m-%d)
+          RELEASE_SHA=$(git rev-parse HEAD)
+
+          BODY=$(printf '%s\n' \
+            "Ночная traditional-сборка с ветки \`3.x\`." \
+            "" \
+            "- Дата (UTC): ${DATE_UTC}" \
+            "- Коммит: \`${RELEASE_SHA}\`" \
+            "- Workflow: ${RUN_URL}" \
+            "" \
+            "Тег \`nightly\` обновляется каждым прогоном (rolling prerelease).")
+
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          git push origin :refs/tags/nightly 2>/dev/null || true
+
+          gh release create nightly \
+            --prerelease \
+            --title "Nightly ${DATE_UTC}" \
+            --notes "${BODY}" \
+            "${ZIP_PATH}"
