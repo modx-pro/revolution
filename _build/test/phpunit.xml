@@ -15,6 +15,7 @@
     <testsuites>
         <testsuite name="Setup">
             <file>Tests/modXSetupTest.php</file>
+            <directory>Tests/Setup</directory>
         </testsuite>
         <testsuite name="Model">
             <file>Tests/Model/modXTest.php</file>
@@ -46,6 +47,7 @@
             <directory>Tests/Processors/Context</directory>
             <directory>Tests/Processors/Element</directory>
             <directory>Tests/Processors/Resource</directory>
+            <directory>Tests/Processors/Security</directory>
         </testsuite>
         <testsuite name="Transport">
             <directory>Tests/Transport</directory>
