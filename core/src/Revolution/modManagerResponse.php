@@ -252,17 +252,35 @@ class modManagerResponse extends modResponse
         $theme = $this->modx->getOption('manager_theme', null, 'default');
         $paths = $this->getNamespacePath($theme);
 
-        $name = $this->namespace !== 'core' ? ucfirst($this->namespace) : '';
-        $name .= $action . 'ManagerController';
-        $name = explode('/', $name);
-        $o = [];
-        foreach ($name as $k) {
-            $o[] = ucfirst(str_replace(['.', '_', '-'], '', $k));
+        $segments = explode('/', $action);
+        $pieces = [];
+        if ($this->namespace !== 'core') {
+            $pieces[] = ucfirst($this->namespace);
         }
-        $name = implode('', $o);
+        foreach ($segments as $k) {
+            $pieces[] = ucfirst(str_replace(['.', '_', '-'], '', $k));
+        }
+        $name = implode('', $pieces) . 'ManagerController';
 
         if (static::isControllerClass($name)) {
             return $name;
+        }
+
+        // Legacy fallback: uncapitalized action segment glued to namespace
+        $legacyName = ($this->namespace !== 'core' ? ucfirst($this->namespace) : '') . $action . 'ManagerController';
+        $legacyName = implode('', array_map(static fn($k) => ucfirst(str_replace(['.', '_', '-'], '', $k)), explode('/', $legacyName)));
+        if ($legacyName !== $name && static::isControllerClass($legacyName)) {
+            return $legacyName;
+        }
+
+        // Fallback without namespace prefix for legacy 2.x controllers
+        $noPrefixPieces = [];
+        foreach ($segments as $k) {
+            $noPrefixPieces[] = ucfirst(str_replace(['.', '_', '-'], '', $k));
+        }
+        $noPrefixName = implode('', $noPrefixPieces) . 'ManagerController';
+        if ($noPrefixName !== $name && static::isControllerClass($noPrefixName)) {
+            return $noPrefixName;
         }
 
         // Look for the controller based on the action name provided

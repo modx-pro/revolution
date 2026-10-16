@@ -1830,10 +1830,26 @@ class modX extends xPDO {
         $action = preg_replace('/[\.]{2,}/', '', htmlspecialchars($action));
 
         // Find a matching processor file
-        $processorFile = $processorsPath . ltrim($action . '.class.php','/');
+        $processorFile = $processorsPath . ltrim($action . '.class.php', '/');
 
         if (!file_exists($processorFile)) {
-            $this->log(modX::LOG_LEVEL_ERROR, "Unable to load processor for action \"{$action}\", it does not exist as an autoloadable class that extends \MODX\Revolution\Processors\Processor, and also not as a file in \"{$processorFile}\"");
+            $lowerAction = strtolower($action);
+            $lowerFile = $processorsPath . ltrim($lowerAction . '.class.php', '/');
+            if (file_exists($lowerFile)) {
+                $processorFile = $lowerFile;
+            } else {
+                $dirname = dirname($action);
+                $basename = basename($action);
+                $targetDir = $dirname !== '.' ? $dirname . '/' : '';
+                $lowerBaseFile = $processorsPath . ltrim($targetDir . strtolower($basename) . '.class.php', '/');
+                if (file_exists($lowerBaseFile)) {
+                    $processorFile = $lowerBaseFile;
+                }
+            }
+        }
+
+        if (!file_exists($processorFile)) {
+            $this->log(modX::LOG_LEVEL_ERROR, "Unable to load processor for action \"{$action}\", it does not exist as an autoloadable class that extends \\MODX\\Revolution\\Processors\\Processor, and also not as a file in \"{$processorFile}\"");
             return new ProcessorResponse($this, [
                 'success' => false,
                 'message' => 'Requested processor not found',

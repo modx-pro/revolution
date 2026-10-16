@@ -107,7 +107,7 @@ class ConfigJs extends Processor
         if ($namespace) {
             $c['namespace'] = $namespace->get('name');
             $c['namespace_path'] = $namespace->get('path');
-            $c['namespace_assets_path'] = $namespace->get('assets_url');
+            $c['namespace_assets_path'] = $namespace->get('assets_path');
         }
 
         $c = array_merge($this->modx->config, $workingContext->config, $this->modx->_userConfig, $c);

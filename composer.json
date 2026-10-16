@@ -45,12 +45,18 @@
             "url": "https://opencollective.com/modx"
         }
     ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/AgelxNash/xpdo.git"
+        }
+    ],
     "config": {
         "vendor-dir": "core/vendor"
     },
     "require": {
         "php": ">=8.1",
-        "xpdo/xpdo": "^3.2",
+        "xpdo/xpdo": "^3.2.1",
         "league/flysystem": "^2.0",
         "league/flysystem-aws-s3-v3": "^2.0",
         "league/flysystem-ftp": "^2.0",
